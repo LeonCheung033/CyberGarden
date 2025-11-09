@@ -1,0 +1,129 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonic Bloom</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            overflow: hidden;
+            background: #000;
+            font-family: 'Arial', sans-serif;
+        }
+        #c {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+        }
+        .info {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            color: #b8d4e3;
+            font-size: 13px;
+            text-shadow: 0 0 8px rgba(184, 212, 227, 0.5);
+            z-index: 100;
+            font-weight: 300;
+            line-height: 1.8;
+            background: rgba(26, 26, 31, 0.6);
+            padding: 15px 20px;
+            border-radius: 8px;
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(184, 212, 227, 0.2);
+        }
+        .info-section {
+            margin-top: 12px;
+            padding-top: 12px;
+            border-top: 1px solid rgba(184, 212, 227, 0.15);
+        }
+        .info-section:first-child {
+            margin-top: 0;
+            padding-top: 0;
+            border-top: none;
+        }
+        .info-label {
+            color: #a8c8ec;
+            font-size: 11px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 4px;
+        }
+        .info-value {
+            color: #e8c5d8;
+            font-size: 14px;
+        }
+        .info-effect {
+            color: #b8d4e3;
+            font-size: 11px;
+            margin-top: 2px;
+            font-style: italic;
+            opacity: 0.8;
+        }
+        .bar-container {
+            width: 200px;
+            height: 4px;
+            background: rgba(184, 212, 227, 0.2);
+            border-radius: 2px;
+            margin-top: 4px;
+            overflow: hidden;
+        }
+        .bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #b8d4e3, #e8c5d8);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="c"></canvas>
+    <div class="info">
+        <div style="font-size: 16px; margin-bottom: 8px;">🌺 Cyber Garden</div>
+        <div id="status">连接中...</div>
+        
+        <div class="info-section">
+            <div class="info-label">🎭 表情特征</div>
+            <div class="info-value" id="emotion-display">-</div>
+            <div class="info-effect" id="emotion-effect">-</div>
+        </div>
+        
+        <div class="info-section">
+            <div class="info-label">🔊 声音特征</div>
+            <div style="margin-top: 6px;">
+                <div style="margin-bottom: 6px;">
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                        <span class="info-value" style="font-size: 12px;">响度</span>
+                        <span class="info-value" style="font-size: 12px;" id="loudness-value">0%</span>
+                    </div>
+                    <div class="bar-container">
+                        <div class="bar-fill" id="loudness-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="info-effect" id="loudness-effect">-</div>
+                </div>
+                <div>
+                    <div style="display: flex; justify-content: space-between; margin-bottom: 2px;">
+                        <span class="info-value" style="font-size: 12px;">音高</span>
+                        <span class="info-value" style="font-size: 12px;" id="pitch-value">- Hz</span>
+                    </div>
+                    <div class="bar-container">
+                        <div class="bar-fill" id="pitch-bar" style="width: 0%;"></div>
+                    </div>
+                    <div class="info-effect" id="pitch-effect">-</div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <script type="importmap">
+    {
+        "imports": {
+            "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+        }
+    }
+    </script>
+    <script type="module" src="main.js"></script>
+</body>
+</html>
+
