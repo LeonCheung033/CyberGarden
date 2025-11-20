@@ -1,0 +1,31 @@
+# AgentScope Configuration
+# 配置大模型 API
+
+model_configs:
+  # DeepSeek API (通过 OpenAI 兼容接口)
+  - model_type: "openai_chat"
+    config_name: "deepseek"
+    model_name: "deepseek-chat"
+    api_key: "${DEEPSEEK_API_KEY}"
+    base_url: "https://api.deepseek.com"
+    
+  # 百炼平台 API (阿里云)
+  - model_type: "dashscope_chat"
+    config_name: "qwen"
+    model_name: "qwen-turbo"
+    api_key: "${DASHSCOPE_API_KEY}"
+
+# Agent 配置
+agents:
+  visual_designer:
+    model_config_name: "deepseek"
+    temperature: 0.7
+    
+  butterfly_controller:
+    model_config_name: "qwen"
+    temperature: 0.8
+    
+  environment_generator:
+    model_config_name: "deepseek"
+    temperature: 0.6
+
