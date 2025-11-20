@@ -3,6 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <!-- 禁用缓存 -->
+    <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+    <meta http-equiv="Pragma" content="no-cache">
+    <meta http-equiv="Expires" content="0">
     <title>Sonic Bloom</title>
     <style>
         body {
@@ -75,10 +79,20 @@
             border-radius: 2px;
             transition: width 0.3s ease;
         }
+        .fps-counter {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            color: #b8d4e3;
+            font-size: 12px;
+            opacity: 0.6;
+            z-index: 100;
+        }
     </style>
 </head>
 <body>
     <canvas id="c"></canvas>
+    <div class="fps-counter" id="fps-counter">FPS: 60</div>
     <div class="info">
         <div style="font-size: 16px; margin-bottom: 8px;">🌺 Cyber Garden</div>
         <div id="status">连接中...</div>
@@ -114,16 +128,27 @@
                 </div>
             </div>
         </div>
+        
+        <div class="info-section">
+            <div class="info-label">✋ 手势识别</div>
+            <div class="info-value" id="gesture-status" style="font-size: 12px;">等待检测...</div>
+            <div class="info-effect" id="gesture-detail">-</div>
+            <div class="info-effect" id="gesture-direction" style="margin-top: 4px;">-</div>
+        </div>
     </div>
     <script type="importmap">
     {
         "imports": {
             "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
-            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+            "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/",
+            "@tensorflow/tfjs": "https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.15.0/dist/tf.min.js",
+            "@tensorflow-models/pose-detection": "https://cdn.jsdelivr.net/npm/@tensorflow-models/pose-detection@2.2.0/dist/pose-detection.min.js",
+            "cannon-es": "https://cdn.jsdelivr.net/npm/cannon-es@0.20.0/dist/cannon-es.js",
+            "postprocessing": "https://cdn.jsdelivr.net/npm/postprocessing@6.35.3/build/postprocessing.js"
         }
     }
     </script>
-    <script type="module" src="main.js"></script>
+    <script type="module" src="main.js?v=202511123300"></script>
 </body>
 </html>
 
