@@ -5,12 +5,16 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
+    "agentscope>=1.0.7",
+    "dashscope>=1.25.0",
     "deepface>=0.0.95",
     "fastapi>=0.121.1",
     "librosa>=0.11.0",
     "numpy>=2.3.4",
+    "openai>=2.7.2",
     "opencv-python-headless>=4.11.0.86",
     "pyaudio>=0.2.14",
+    "python-dotenv>=1.2.1",
     "tf-keras>=2.20.1",
     "uvicorn[standard]>=0.38.0",
     "websockets>=15.0.1",
