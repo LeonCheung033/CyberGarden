@@ -15,15 +15,37 @@
 - **音高分析**：使用 librosa.pyin 提取基频（F0），控制花朵旋转
 - 实时音频处理和平滑过渡
 
-### 🎨 视觉效果
+### 🤖 AI 智能系统（可选）
+- **AgentScope 多智能体系统**：
+  - **VisualDesignerAgent**：使用大模型智能推荐视觉参数（颜色、光照、粒子效果）
+  - **ButterflyControllerAgent**：AI 控制蝴蝶行为逻辑（飞行路径、互动模式）
+  - **EnvironmentGeneratorAgent**：动态生成环境效果（光照、雾效、氛围）
+  - **CoordinatorAgent**：协调所有智能体，整合结果
+- 支持 **DeepSeek** 和 **阿里云百炼平台** API
+- 根据情绪和动作智能调整视觉效果
+
+### 🦋 交互式蝴蝶系统
+- **3D 蝴蝶模型**：精致的翅膀、身体、触角
+- **AI 行为控制**：
+  - 跟随用户手势（通过姿态检测）
+  - 围绕花朵飞行
+  - 停在花朵上互动
+  - 响应情绪变化
+- **实时姿态检测**：使用 TensorFlow.js MediaPipe Pose
+- **手势识别**：识别挥手、指向等手势
+
+### 🎨 高级视觉效果
 - **Three.js** 3D 渲染引擎
 - **Post-processing 效果**：
+  - SSAO（屏幕空间环境光遮蔽）
   - Bloom（柔和发光）
   - Film Grain（胶片颗粒感）
   - 色调映射
+- **GPU 加速粒子系统**：10,000+ 粒子，情绪粒子和蝴蝶轨迹
+- **自定义 Shader Material**：花瓣发光和脉动效果
 - 日式低饱和度配色方案
 - 11 朵动态花朵，中心花朵响应实时数据
-- 粒子系统和动态光照
+- 动态光照和物理引擎支持
 
 ### 📊 实时数据展示
 - 左上角信息面板显示：
@@ -31,6 +53,7 @@
   - 响度百分比和可视化进度条
   - 音高频率和可视化进度条
   - 各项数据对花朵的影响说明
+- 右上角 FPS 监控
 
 ## 🏗️ 项目结构
 
@@ -39,10 +62,35 @@ cyberFamer/
 ├── backend/              # Python/FastAPI 后端
 │   ├── main.py          # 主应用文件（FastAPI + WebSocket）
 │   ├── pyproject.toml   # 依赖管理（uv）
-│   └── uv.lock          # 依赖锁定文件
+│   ├── uv.lock          # 依赖锁定文件
+│   ├── .env.example     # 环境变量模板
+│   ├── .env             # 环境变量文件（需自行创建，不提交到 git）
+│   ├── agents/          # AI 智能体模块
+│   │   ├── __init__.py
+│   │   ├── visual_designer.py      # 视觉设计智能体
+│   │   ├── butterfly_controller.py # 蝴蝶控制智能体
+│   │   ├── environment_generator.py # 环境生成智能体
+│   │   └── coordinator.py          # 协调者智能体
+│   └── config/          # 配置文件
+│       └── agents_config.yaml
 ├── frontend/            # JavaScript/Three.js 前端
 │   ├── index.html       # HTML 入口文件
-│   └── main.js          # Three.js 场景和 WebSocket 客户端
+│   ├── main.js          # Three.js 场景和 WebSocket 客户端
+│   ├── ml/              # 机器学习模块
+│   │   ├── pose-detection.js    # 姿态检测
+│   │   └── gesture-recognizer.js # 手势识别
+│   ├── models/          # 3D 模型
+│   │   └── butterfly.js         # 蝴蝶模型
+│   ├── ai/              # AI 系统
+│   │   └── butterfly-ai.js      # 蝴蝶 AI 行为
+│   ├── physics/         # 物理引擎
+│   │   └── physics-world.js
+│   ├── shaders/         # 自定义 Shader
+│   │   └── flower-shader.js
+│   ├── particles/       # 粒子系统
+│   │   └── gpu-particles.js
+│   └── effects/         # 后处理效果
+│       └── postprocessing-setup.js
 └── README.md            # 项目文档
 ```
 
@@ -55,11 +103,16 @@ cyberFamer/
 - **OpenCV** - 摄像头捕获
 - **librosa** - 音频分析（响度、音高）
 - **PyAudio** - 音频输入
+- **AgentScope** - 多智能体框架
+- **python-dotenv** - 环境变量管理
 - **uv** - 依赖管理
 
 ### 前端
 - **Three.js** - 3D 渲染引擎
-- **Post-processing** - 后处理效果（Bloom、Film Grain）
+- **TensorFlow.js** - 机器学习框架
+- **MediaPipe Pose** - 姿态检测
+- **Post-processing** - 后处理效果（SSAO、Bloom、Film Grain）
+- **Cannon.js** - 物理引擎
 - **WebSocket** - 实时数据通信
 - **ES6 Modules** - 模块化开发
 
@@ -96,23 +149,74 @@ uv sync
 
 首次运行会自动创建虚拟环境并安装所有依赖。
 
+### 配置 API Keys（可选）
+
+项目支持使用 AI 大模型来智能推荐视觉参数和控制蝴蝶行为。要启用此功能，需要配置 API keys：
+
+1. **复制环境变量模板文件**
+   ```bash
+   cd backend
+   cp .env.example .env
+   ```
+
+2. **编辑 `.env` 文件，填入你的 API keys**
+   ```bash
+   # 使用你喜欢的编辑器
+   nano .env
+   # 或
+   vim .env
+   ```
+
+3. **获取 API Keys**
+   - **DeepSeek API Key**（推荐）：
+     - 访问 https://platform.deepseek.com/
+     - 注册账号并创建 API key
+     - 将 key 填入 `DEEPSEEK_API_KEY`
+   
+   - **阿里云百炼平台 API Key**（可选）：
+     - 访问 https://dashscope.console.aliyun.com/
+     - 注册账号并创建 API key
+     - 将 key 填入 `DASHSCOPE_API_KEY`
+
+4. **保存文件**
+
+**注意**：
+- 如果不配置 API keys，系统会使用默认值，AI 功能将受限，但基础功能（情绪识别、音频分析、3D 渲染）仍然可用
+- 至少设置一个 API key 才能启用完整的 AI 功能
+- `.env` 文件已添加到 `.gitignore`，不会被提交到版本控制系统
+- 请妥善保管你的 API keys，不要泄露给他人
+
 ## 🚀 运行步骤
 
 ### 1. 启动后端服务器
 
+启动方式与之前完全相同，`.env` 文件会在程序启动时自动加载：
+
+```bash
+cd backend
+source ./.venv/bin/activate
+uv run python main.py
+```
+
+**或者直接使用 uv run（推荐）**：
 ```bash
 cd backend
 uv run python main.py
 ```
 
 后端将在 `http://localhost:8000` 启动，并开始：
+- 自动加载 `.env` 文件中的环境变量（如果存在）
 - 捕获摄像头画面（每 3 帧分析一次）
 - 实时分析音频输入
 - 通过 WebSocket 广播情绪、响度和音高数据
+- 如果配置了 API keys，会启动 AI 智能体系统
 
 **注意**：
+- 启动方式**无需改变**，`.env` 文件会在程序启动时自动加载
 - 首次运行 DeepFace 会自动下载模型文件（可能需要一些时间）
 - 需要授予摄像头和麦克风权限
+- 如果未配置 API keys，会在控制台显示警告，但系统仍可正常运行（使用默认值）
+- 如果配置了 `.env` 文件，程序会自动读取其中的 API keys
 
 ### 2. 启动前端
 
@@ -143,7 +247,14 @@ npx serve -p 8080
    - 说话时，花朵会根据声音响度放大/缩小
    - 音调高低会影响花朵的旋转角度
    - 其他花朵会产生涟漪效果
-3. **查看数据**：左上角信息面板实时显示当前的情绪、响度和音高数据
+   - 蝴蝶会根据你的手势和情绪智能飞行
+   - 如果配置了 AI，视觉效果会根据 AI 推荐动态调整
+3. **查看数据**：
+   - 左上角信息面板实时显示当前的情绪、响度和音高数据
+   - 右上角显示 FPS（帧率）监控
+4. **手势控制**：
+   - 伸出手，蝴蝶会跟随你的手势
+   - 挥手可以触发特殊效果
 
 ## 🎨 情绪与颜色映射
 
@@ -222,8 +333,33 @@ npx serve -p 8080
 - 正对摄像头
 - 情绪稳定器需要几秒钟来稳定
 
+## 🔐 环境变量说明
+
+项目使用 `.env` 文件管理敏感配置（API keys）。`.env` 文件不会被提交到版本控制系统。
+
+### 必需的环境变量
+无（所有环境变量都是可选的）
+
+### 可选的环境变量
+
+| 变量名 | 说明 | 获取方式 |
+|--------|------|----------|
+| `DEEPSEEK_API_KEY` | DeepSeek API Key | https://platform.deepseek.com/ |
+| `DASHSCOPE_API_KEY` | 阿里云百炼平台 API Key | https://dashscope.console.aliyun.com/ |
+
+### 环境变量优先级
+
+1. `.env` 文件（推荐）
+2. 系统环境变量
+3. 默认值（如果未设置，AI 功能将受限）
+
 ## 📝 开发计划
 
+- [x] AI 智能体系统集成
+- [x] 姿态检测和手势识别
+- [x] 交互式蝴蝶系统
+- [x] GPU 粒子系统
+- [x] 高级后处理效果
 - [ ] 添加多人模式支持
 - [ ] 增加更多花朵类型和样式
 - [ ] 添加音频可视化（频谱分析）
