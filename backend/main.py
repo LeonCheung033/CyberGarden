@@ -5,16 +5,29 @@ import librosa
 import pyaudio
 import json
 import os
+import tempfile
 from collections import deque
 from pathlib import Path
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, UploadFile, File, HTTPException
+from fastapi.responses import JSONResponse
+from fastapi.middleware.cors import CORSMiddleware
 from deepface import DeepFace
 import uvicorn
 from dotenv import load_dotenv
+import assemblyai as aai
 
 # 加载 .env 文件
 env_path = Path(__file__).parent / '.env'
 load_dotenv(dotenv_path=env_path)
+
+# 初始化 AssemblyAI
+# 支持两种环境变量名称：ASSEMBLY_API_KEY 和 Assembly_API_KEY
+assembly_api_key = os.getenv("ASSEMBLY_API_KEY") or os.getenv("Assembly_API_KEY") or ""
+if assembly_api_key:
+    aai.settings.api_key = assembly_api_key
+    print("✓ AssemblyAI API key loaded")
+else:
+    print("⚠ Warning: ASSEMBLY_API_KEY or Assembly_API_KEY not found in .env")
 
 # AgentScope imports
 from agentscope.model import OpenAIChatModel, DashScopeChatModel
@@ -25,6 +38,15 @@ from agents.coordinator import CoordinatorAgent
 
 # --- FastAPI App ---
 app = FastAPI()
+
+# CORS 配置
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # 开发环境允许所有来源
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 # --- AgentScope 初始化 ---
 def init_agents():
@@ -127,6 +149,218 @@ class ConnectionManager:
             self.disconnect(connection)
 
 manager = ConnectionManager()
+
+# --- 语音转文本和花朵参数生成 ---
+async def transcribe_audio(audio_file_path: str) -> str:
+    """使用 AssemblyAI 将音频文件转换为文本"""
+    try:
+        if not assembly_api_key:
+            raise ValueError("AssemblyAI API key not configured")
+        
+        config = aai.TranscriptionConfig(
+            speech_model=aai.SpeechModel.best,
+            language_code="en"  # 可以根据需要修改
+        )
+        
+        transcriber = aai.Transcriber(config=config)
+        
+        # transcribe 方法是同步的，会阻塞直到转录完成
+        # 在异步函数中，我们需要在线程池中运行它以避免阻塞事件循环
+        import asyncio
+        loop = asyncio.get_event_loop()
+        
+        print(f"Starting transcription for: {audio_file_path}")
+        transcript = await loop.run_in_executor(None, transcriber.transcribe, audio_file_path)
+        print(f"Transcription completed. Status: {transcript.status}")
+        
+        # 检查转录状态
+        if transcript.status == aai.TranscriptStatus.error:
+            error_msg = getattr(transcript, 'error', 'Unknown error')
+            raise RuntimeError(f"Transcription failed: {error_msg}")
+        
+        # 确保转录成功
+        if transcript.status != aai.TranscriptStatus.completed:
+            raise RuntimeError(f"Transcription status: {transcript.status}, expected completed")
+        
+        # 获取转录文本
+        text = transcript.text
+        if not text:
+            raise RuntimeError("Transcription completed but no text returned")
+        
+        print(f"Transcription text: {text[:100]}...")  # 打印前100个字符
+        return text
+    except Exception as e:
+        print(f"Error in transcription: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
+
+async def generate_flower_params_from_text(text: str, coordinator_instance=None) -> dict:
+    """根据文本生成花朵参数（大小、形状、颜色等）"""
+    try:
+        # 如果没有 coordinator，使用简单的规则生成
+        if not coordinator_instance:
+            return generate_flower_params_simple(text)
+        
+        # 使用 LLM 生成更智能的参数
+        prompt = f"""Based on the following user response, generate flower parameters that reflect their emotions and feelings.
+
+User response: "{text}"
+
+Generate a JSON object with the following structure:
+{{
+    "size": 0.8-1.5,  // Flower size multiplier
+    "color": "#hexcolor",  // Main flower color (hex format)
+    "petalCount": 5-8,  // Number of petals
+    "brightness": 0.5-1.0,  // Overall brightness
+    "emotion": "happy/sad/excited/calm/etc"  // Detected emotion
+}}
+
+Make the flower reflect the mood and content of the response. Be creative and meaningful."""
+
+        # 使用 coordinator 的 visual_agent 生成参数
+        if coordinator_instance.visual_agent:
+            response = coordinator_instance.visual_agent.model(
+                messages=[{"role": "user", "content": prompt}]
+            )
+            # 解析响应中的 JSON
+            import re
+            json_match = re.search(r'\{[^}]+\}', response.content, re.DOTALL)
+            if json_match:
+                params = json.loads(json_match.group())
+                return params
+        
+        # 如果 LLM 失败，使用简单规则
+        return generate_flower_params_simple(text)
+        
+    except Exception as e:
+        print(f"Error generating flower params: {e}")
+        return generate_flower_params_simple(text)
+
+def generate_flower_params_simple(text: str) -> dict:
+    """简单的基于关键词的花朵参数生成（备用方案）"""
+    text_lower = text.lower()
+    
+    # 颜色映射
+    color_map = {
+        "happy": "#FFD700", "good": "#FFD700", "great": "#FFD700", "wonderful": "#FFD700",
+        "sad": "#4169E1", "bad": "#4169E1", "tired": "#4169E1", "down": "#4169E1",
+        "excited": "#FF1493", "amazing": "#FF1493", "awesome": "#FF1493",
+        "calm": "#90EE90", "peaceful": "#90EE90", "relaxed": "#90EE90",
+        "angry": "#FF4500", "frustrated": "#FF4500", "mad": "#FF4500",
+        "love": "#FF69B4", "loved": "#FF69B4", "caring": "#FF69B4"
+    }
+    
+    # 大小映射
+    size = 1.0
+    if any(word in text_lower for word in ["big", "large", "huge", "amazing"]):
+        size = 1.3
+    elif any(word in text_lower for word in ["small", "little", "tiny"]):
+        size = 0.7
+    
+    # 检测情绪
+    emotion = "neutral"
+    for emo, words in [
+        ("happy", ["happy", "good", "great", "wonderful", "nice"]),
+        ("sad", ["sad", "bad", "tired", "down", "difficult"]),
+        ("excited", ["excited", "amazing", "awesome", "fantastic"]),
+        ("calm", ["calm", "peaceful", "relaxed", "quiet"]),
+        ("angry", ["angry", "frustrated", "mad", "annoyed"]),
+        ("love", ["love", "loved", "caring", "warm"])
+    ]:
+        if any(word in text_lower for word in words):
+            emotion = emo
+            break
+    
+    # 选择颜色
+    color = color_map.get(emotion, "#FFD700")
+    
+    return {
+        "size": size,
+        "color": color,
+        "petalCount": 6,
+        "brightness": 0.8 if emotion in ["happy", "excited", "love"] else 0.6,
+        "emotion": emotion
+    }
+
+# --- API 路由 ---
+@app.post("/api/transcribe")
+async def transcribe_audio_endpoint(audio: UploadFile = File(...)):
+    """接收音频文件并转换为文本"""
+    tmp_path = None
+    try:
+        # 获取文件扩展名
+        filename = audio.filename or "audio"
+        file_ext = os.path.splitext(filename)[1] or ".webm"
+        
+        print(f"Received audio file: {filename}, content_type: {audio.content_type}")
+        
+        # 保存临时文件（保持原始格式，AssemblyAI 支持多种格式）
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_ext) as tmp_file:
+            content = await audio.read()
+            file_size = len(content)
+            print(f"Audio file size: {file_size} bytes")
+            
+            if file_size == 0:
+                raise ValueError("Audio file is empty")
+            
+            tmp_file.write(content)
+            tmp_path = tmp_file.name
+        
+        print(f"Saved audio file to: {tmp_path}")
+        
+        # 转录音频
+        text = await transcribe_audio(tmp_path)
+        
+        # 清理临时文件
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+                print(f"Cleaned up temporary file: {tmp_path}")
+            except Exception as cleanup_error:
+                print(f"Warning: Failed to cleanup temp file: {cleanup_error}")
+        
+        return JSONResponse({
+            "success": True,
+            "text": text
+        })
+    except Exception as e:
+        # 确保清理临时文件
+        if tmp_path and os.path.exists(tmp_path):
+            try:
+                os.unlink(tmp_path)
+            except:
+                pass
+        
+        error_msg = str(e)
+        print(f"✗ Error in transcription endpoint: {error_msg}")
+        import traceback
+        traceback.print_exc()
+        
+        return JSONResponse({
+            "success": False,
+            "error": error_msg
+        }, status_code=500)
+
+@app.post("/api/generate-flower-params")
+async def generate_flower_params_endpoint(request: dict):
+    """根据文本生成花朵参数"""
+    try:
+        text = request.get("text", "")
+        if not text:
+            raise ValueError("Text is required")
+        
+        params = await generate_flower_params_from_text(text, coordinator)
+        
+        return JSONResponse({
+            "success": True,
+            "params": params
+        })
+    except Exception as e:
+        return JSONResponse({
+            "success": False,
+            "error": str(e)
+        }, status_code=500)
 
 # WebSocket 路由
 @app.websocket("/ws/data")

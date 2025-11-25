@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "agentscope>=1.0.7",
+    "assemblyai>=0.40.0",
     "dashscope>=1.25.0",
     "deepface>=0.0.95",
     "fastapi>=0.121.1",

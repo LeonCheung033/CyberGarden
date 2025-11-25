@@ -401,72 +401,292 @@ flowerPositions.forEach((pos, index) => {
 const mainFlower = flowers[flowers.length - 1];
 
 // --- 两阶段系统 ---
-let currentPhase = 'initialization'; // 'initialization' 或 'interaction'
-let initializationComplete = false;
-const INITIALIZATION_DURATION = 3000; // 3秒初始化时间
-let initializationStartTime = Date.now();
+let currentPhase = 'voice_interaction'; // 'voice_interaction' 或 'gesture_interaction'
+let voiceInteractionComplete = false;
+let flowerParamsFixed = false; // 花朵参数是否已固定
 
-// 初始化阶段：生成花园
-function startInitializationPhase() {
-    currentPhase = 'initialization';
-    initializationStartTime = Date.now();
-    initializationComplete = false;
+// 语音交互阶段：通过语音生成花朵
+function startVoiceInteractionPhase() {
+    currentPhase = 'voice_interaction';
+    voiceInteractionComplete = false;
+    flowerParamsFixed = false;
     
-    // 确保所有花朵都可见且在场景中
+    // 显示语音交互界面
+    const voiceInteraction = document.getElementById('voice-interaction');
+    if (voiceInteraction) {
+        voiceInteraction.classList.add('active');
+    }
+    
+    // 隐藏其他花朵，只显示主花朵（中心花朵）
     flowers.forEach((flower, index) => {
         if (flower && flower.group) {
-            // 确保在场景中
-            if (!scene.children.includes(flower.group)) {
-                scene.add(flower.group);
+            if (index === flowers.length - 1) {
+                // 主花朵可见
+                flower.group.visible = true;
+                flower.group.scale.set(0.5, 0.5, 0.5);
+            } else {
+                // 其他花朵隐藏
+                flower.group.visible = false;
             }
-            
-            flower.group.visible = true;
-            // 从0.3开始而不是0，避免完全消失
-            flower.group.scale.set(0.3, 0.3, 0.3);
-            
-            // 确保所有子元素可见
-            flower.group.traverse((child) => {
-                if (child.isMesh) {
-                    child.visible = true;
-                }
-            });
-        } else {
-            console.error(`Flower ${index} is missing!`);
         }
     });
     
-    // 确保蝴蝶可见
+    // 隐藏蝴蝶（第二阶段才显示）
     if (butterfly) {
         const butterflyGroup = butterfly.getGroup();
         if (butterflyGroup) {
-            if (!scene.children.includes(butterflyGroup)) {
-                scene.add(butterflyGroup);
+            butterflyGroup.visible = false;
+        }
+    }
+    
+    console.log('开始语音交互阶段：等待用户语音输入...');
+}
+
+// 完成语音交互，进入手势交互阶段
+function completeVoiceInteraction() {
+    voiceInteractionComplete = true;
+    currentPhase = 'gesture_interaction';
+    
+    // 隐藏语音交互界面
+    const voiceInteraction = document.getElementById('voice-interaction');
+    if (voiceInteraction) {
+        voiceInteraction.classList.remove('active');
+    }
+    
+    // 固定花朵参数
+    flowerParamsFixed = true;
+    
+    // 显示所有花朵和蝴蝶
+    flowers.forEach((flower) => {
+        if (flower && flower.group) {
+            flower.group.visible = true;
+            // 确保花朵有正常的大小
+            if (flower.group.scale.x < 0.8) {
+                flower.group.scale.set(1.0, 1.0, 1.0);
             }
+        }
+    });
+    
+    if (butterfly) {
+        const butterflyGroup = butterfly.getGroup();
+        if (butterflyGroup) {
             butterflyGroup.visible = true;
             butterfly.setTargetPosition(0, 3, 0);
         }
     }
     
-    console.log('开始初始化阶段：生成花园...', `花朵数量: ${flowers.length}`);
+    console.log('语音交互完成：进入手势交互阶段');
+    
+    // 确保姿态检测正在运行
+    if (poseDetector) {
+        console.log('检查姿态检测状态...');
+        // 如果姿态检测未运行，重新启动
+        if (typeof poseDetector.isDetectingActive === 'function' && !poseDetector.isDetectingActive()) {
+            console.log('姿态检测未运行，重新启动...');
+            initPoseDetection().catch(err => {
+                console.error('重新启动姿态检测失败:', err);
+            });
+        } else {
+            console.log('姿态检测正在运行');
+        }
+    } else {
+        console.log('姿态检测器未初始化，尝试初始化...');
+        initPoseDetection().catch(err => {
+            console.error('初始化姿态检测失败:', err);
+        });
+    }
+    
+    // 更新状态显示
+    const statusElement = document.getElementById('status');
+    if (statusElement) {
+        statusElement.textContent = '交互模式：使用食指和拇指捏合手势控制蝴蝶';
+    }
 }
 
-// 检查初始化是否完成
-function checkInitializationComplete() {
-    if (!initializationComplete && currentPhase === 'initialization') {
-        const elapsed = Date.now() - initializationStartTime;
-        if (elapsed >= INITIALIZATION_DURATION) {
-            initializationComplete = true;
-            currentPhase = 'interaction';
-            console.log('初始化完成：进入交互阶段');
-            
-            // 显示提示信息
-            if (statusText) {
-                statusText.textContent = '交互模式：使用食指和拇指捏合手势控制蝴蝶';
+// --- 语音录制功能 ---
+let mediaRecorder = null;
+let audioChunks = [];
+let isRecording = false;
+
+async function startRecording() {
+    try {
+        const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+        mediaRecorder = new MediaRecorder(stream, {
+            mimeType: 'audio/webm;codecs=opus'
+        });
+        
+        audioChunks = [];
+        mediaRecorder.ondataavailable = (event) => {
+            if (event.data.size > 0) {
+                audioChunks.push(event.data);
             }
+        };
+        
+        mediaRecorder.onstop = async () => {
+            const audioBlob = new Blob(audioChunks, { type: 'audio/webm' });
+            await processAudio(audioBlob);
+            
+            // 停止所有音频轨道
+            stream.getTracks().forEach(track => track.stop());
+        };
+        
+        mediaRecorder.start();
+        isRecording = true;
+        
+        const voiceButton = document.getElementById('voice-button');
+        const voiceStatus = document.getElementById('voice-status');
+        if (voiceButton) {
+            voiceButton.textContent = '⏹ Stop Recording';
+            voiceButton.classList.add('recording');
+        }
+        if (voiceStatus) {
+            voiceStatus.textContent = '🎤 Recording... Speak now!';
+        }
+        
+        console.log('开始录音...');
+    } catch (error) {
+        console.error('无法访问麦克风:', error);
+        const voiceStatus = document.getElementById('voice-status');
+        if (voiceStatus) {
+            voiceStatus.textContent = '❌ 无法访问麦克风，请检查权限设置';
         }
     }
-    return initializationComplete;
 }
+
+function stopRecording() {
+    if (mediaRecorder && isRecording) {
+        mediaRecorder.stop();
+        isRecording = false;
+        
+        const voiceButton = document.getElementById('voice-button');
+        if (voiceButton) {
+            voiceButton.textContent = '🎤 Start Recording';
+            voiceButton.classList.remove('recording');
+        }
+        
+        const voiceStatus = document.getElementById('voice-status');
+        if (voiceStatus) {
+            voiceStatus.textContent = '⏳ Processing...';
+        }
+        
+        console.log('停止录音，处理中...');
+    }
+}
+
+async function processAudio(audioBlob) {
+    try {
+        // 发送音频到后端进行转写
+        const formData = new FormData();
+        formData.append('audio', audioBlob, 'recording.webm');
+        
+        const voiceStatus = document.getElementById('voice-status');
+        if (voiceStatus) {
+            voiceStatus.textContent = '🔄 Transcribing...';
+        }
+        
+        const transcribeResponse = await fetch('http://localhost:8000/api/transcribe', {
+            method: 'POST',
+            body: formData
+        });
+        
+        const transcribeResult = await transcribeResponse.json();
+        
+        if (!transcribeResult.success) {
+            throw new Error(transcribeResult.error || 'Transcription failed');
+        }
+        
+        const text = transcribeResult.text;
+        console.log('转写结果:', text);
+        
+        if (voiceStatus) {
+            voiceStatus.textContent = `📝 You said: "${text}"`;
+        }
+        
+        // 生成花朵参数
+        if (voiceStatus) {
+            voiceStatus.textContent = '🌺 Generating flower...';
+        }
+        
+        const paramsResponse = await fetch('http://localhost:8000/api/generate-flower-params', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ text: text })
+        });
+        
+        const paramsResult = await paramsResponse.json();
+        
+        if (!paramsResult.success) {
+            throw new Error(paramsResult.error || 'Failed to generate flower params');
+        }
+        
+        const flowerParams = paramsResult.params;
+        console.log('花朵参数:', flowerParams);
+        
+        // 应用花朵参数到主花朵
+        applyFlowerParams(mainFlower, flowerParams);
+        
+        // 完成语音交互，进入手势交互阶段
+        setTimeout(() => {
+            completeVoiceInteraction();
+        }, 2000);
+        
+    } catch (error) {
+        console.error('处理音频时出错:', error);
+        const voiceStatus = document.getElementById('voice-status');
+        if (voiceStatus) {
+            voiceStatus.textContent = `❌ Error: ${error.message}`;
+        }
+        
+        // 重置按钮
+        const voiceButton = document.getElementById('voice-button');
+        if (voiceButton) {
+            voiceButton.textContent = '🎤 Start Recording';
+            voiceButton.classList.remove('recording');
+        }
+    }
+}
+
+function applyFlowerParams(flower, params) {
+    if (!flower || !flower.group) return;
+    
+    // 应用大小
+    const size = params.size || 1.0;
+    flower.group.scale.set(size, size, size);
+    
+    // 应用颜色
+    const color = new THREE.Color(params.color || '#FFD700');
+    if (flower.petalMeshes && flower.petalMeshes.length > 0) {
+        flower.petalMeshes.forEach(petal => {
+            if (petal.material) {
+                petal.material.color.copy(color);
+            }
+        });
+    }
+    
+    // 应用亮度
+    const brightness = params.brightness || 0.8;
+    if (flower.center && flower.center.material) {
+        flower.center.material.emissiveIntensity = brightness * 0.2;
+    }
+    
+    console.log('花朵参数已应用:', { size, color: params.color, brightness });
+}
+
+// 初始化语音交互按钮
+document.addEventListener('DOMContentLoaded', () => {
+    const voiceButton = document.getElementById('voice-button');
+    if (voiceButton) {
+        voiceButton.addEventListener('click', () => {
+            if (!isRecording) {
+                startRecording();
+            } else {
+                stopRecording();
+            }
+        });
+    }
+});
 
 // --- 姿态检测和手势识别 ---
 const poseDetector = new PoseDetector();
@@ -807,31 +1027,55 @@ setInterval(() => {
 // --- 初始化姿态检测 ---
 async function initPoseDetection() {
     try {
+        console.log('开始初始化姿态检测...');
+        
         // 获取摄像头流
         const stream = await navigator.mediaDevices.getUserMedia({
             video: { width: 640, height: 480 }
         });
+        console.log('✓ 摄像头权限已获取');
         
         // 创建隐藏的 video 元素用于姿态检测
         const video = document.createElement('video');
         video.srcObject = stream;
-        video.play();
+        video.autoplay = true;
+        video.playsInline = true;
         video.style.display = 'none';
         document.body.appendChild(video);
         
         // 等待视频就绪
-        await new Promise((resolve) => {
+        await new Promise((resolve, reject) => {
+            const timeout = setTimeout(() => {
+                reject(new Error('视频加载超时'));
+            }, 10000);
+            
             video.onloadedmetadata = () => {
+                clearTimeout(timeout);
                 video.width = video.videoWidth;
                 video.height = video.videoHeight;
+                console.log(`✓ 视频已就绪: ${video.width}x${video.height}`);
                 resolve();
+            };
+            
+            video.onerror = (err) => {
+                clearTimeout(timeout);
+                reject(err);
             };
         });
         
+        // 确保视频正在播放
+        try {
+            await video.play();
+            console.log('✓ 视频开始播放');
+        } catch (playError) {
+            console.warn('视频自动播放失败，尝试手动播放:', playError);
+        }
+        
         // 启动姿态检测
+        console.log('尝试启动姿态检测...');
         const started = await poseDetector.startDetection(video);
         if (started) {
-            console.log('Pose detection started');
+            console.log('✓ 姿态检测已启动');
             
             // 注册姿态检测回调
             poseDetector.onPoseDetected((pose, handPos) => {
@@ -861,23 +1105,55 @@ async function initPoseDetection() {
             });
             
             // 添加错误处理
-            poseDetector.onError((error) => {
-                console.error('Pose detection error:', error);
-                if (gestureStatus) {
-                    gestureStatus.textContent = '⚠️ 检测错误';
-                    gestureStatus.style.color = '#ff9a9e';
-                }
-            });
+            if (typeof poseDetector.onError === 'function') {
+                poseDetector.onError((error) => {
+                    console.error('Pose detection error:', error);
+                    if (gestureStatus) {
+                        gestureStatus.textContent = '⚠️ 检测错误';
+                        gestureStatus.style.color = '#ff9a9e';
+                    }
+                });
+            }
+            
+            // 更新状态显示
+            if (gestureStatus) {
+                gestureStatus.textContent = '🔍 正在检测...';
+                gestureStatus.style.color = '#a8c8ec';
+            }
+        } else {
+            console.error('✗ 姿态检测启动失败 - startDetection 返回 false');
+            if (gestureStatus) {
+                gestureStatus.textContent = '⚠️ 检测启动失败 - 请检查控制台';
+                gestureStatus.style.color = '#ff9a9e';
+            }
+            if (gestureDetail) {
+                gestureDetail.textContent = '可能原因：模型加载失败或摄像头问题';
+            }
         }
     } catch (error) {
         console.error('Error initializing pose detection:', error);
+        if (gestureStatus) {
+            if (error.name === 'NotAllowedError' || error.name === 'PermissionDeniedError') {
+                gestureStatus.textContent = '⚠️ 需要摄像头权限';
+                gestureStatus.style.color = '#ff9a9e';
+            } else if (error.name === 'NotFoundError' || error.name === 'DevicesNotFoundError') {
+                gestureStatus.textContent = '⚠️ 未找到摄像头';
+                gestureStatus.style.color = '#ff9a9e';
+            } else {
+                gestureStatus.textContent = '⚠️ 检测初始化失败';
+                gestureStatus.style.color = '#ff9a9e';
+            }
+        }
         console.log('Continuing without pose detection...');
     }
 }
 
 // 更新手势显示
 function updateGestureDisplay(gesture, handPos) {
-    if (!gestureStatus || !gestureDetail || !gestureDirection) return;
+    if (!gestureStatus || !gestureDetail || !gestureDirection) {
+        console.warn('手势显示元素未找到');
+        return;
+    }
     
     // 即使没有手势，如果有手部位置也显示（降低置信度阈值）
     if (handPos && handPos.confidence > 0.2) {
@@ -889,9 +1165,10 @@ function updateGestureDisplay(gesture, handPos) {
             return;
         }
     } else if (!handPos) {
-        gestureStatus.textContent = '等待检测...';
+        // 没有检测到手部，但姿态检测正在运行
+        gestureStatus.textContent = '🔍 等待检测手部...';
         gestureStatus.style.color = '#b8d4e3';
-        gestureDetail.textContent = '请将手放在摄像头前';
+        gestureDetail.textContent = '请将手放在摄像头前，确保手部清晰可见';
         gestureDirection.textContent = '-';
         return;
     }
@@ -906,6 +1183,44 @@ function updateGestureDisplay(gesture, handPos) {
     let statusColor = '#b8d4e3';
     
     switch (gestureType) {
+        // 新手势类型（基于位置）
+        case 'hand_up':
+            statusText = '👆 举手（控制向上）';
+            statusColor = '#90c695';
+            break;
+        case 'hand_down':
+            statusText = '👇 手在下方（控制向下）';
+            statusColor = '#90c695';
+            break;
+        case 'hand_left':
+            statusText = '👈 手在左侧（控制向左）';
+            statusColor = '#90c695';
+            break;
+        case 'hand_right':
+            statusText = '👉 手在右侧（控制向右）';
+            statusColor = '#90c695';
+            break;
+        case 'hand_center':
+            statusText = '✋ 手在中间（稳定控制）';
+            statusColor = '#a8c8ec';
+            break;
+        case 'fast_move':
+            statusText = '⚡ 快速移动（特殊效果）';
+            statusColor = '#ffaa00';
+            break;
+        case 'stable_top':
+            statusText = '🔒 静止在上方';
+            statusColor = '#90c695';
+            break;
+        case 'stable_middle':
+            statusText = '🔒 静止在中间';
+            statusColor = '#90c695';
+            break;
+        case 'stable_bottom':
+            statusText = '🔒 静止在下方';
+            statusColor = '#90c695';
+            break;
+        // 旧手势类型（兼容）
         case 'pinch_start':
             statusText = '✌️ 捏合开始';
             statusColor = '#90c695';
@@ -923,17 +1238,35 @@ function updateGestureDisplay(gesture, handPos) {
             statusColor = '#a8c8ec';
             break;
         default:
-            statusText = '🤚 手势识别中';
+            statusText = `🤚 ${gestureType}`;
             statusColor = '#b8d4e3';
     }
     
     gestureStatus.textContent = statusText;
     gestureStatus.style.color = statusColor;
     
-    // 显示手部位置信息
+    // 显示手部位置信息和区域
     if (handPos) {
         const confidence = Math.round(handPos.confidence * 100);
-        gestureDetail.textContent = `置信度: ${confidence}% | 位置: (${handPos.x.toFixed(1)}, ${handPos.y.toFixed(1)})`;
+        let detailText = `置信度: ${confidence}% | 位置: (${handPos.x.toFixed(1)}, ${handPos.y.toFixed(1)})`;
+        
+        // 显示区域信息
+        if (gesture.region) {
+            const region = gesture.region;
+            detailText += ` | 区域: ${region.vertical === 'top' ? '上' : region.vertical === 'bottom' ? '下' : '中'}${region.horizontal === 'left' ? '左' : region.horizontal === 'right' ? '右' : '中'}`;
+        }
+        
+        // 显示移动信息
+        if (gesture.movement) {
+            const mov = gesture.movement;
+            if (mov.isMoving) {
+                detailText += ` | 移动: ${mov.direction} (${mov.speed.toFixed(2)})`;
+            } else {
+                detailText += ' | 静止';
+            }
+        }
+        
+        gestureDetail.textContent = detailText;
     } else {
         gestureDetail.textContent = '-';
     }
@@ -1110,9 +1443,11 @@ function handleWebSocketMessage(event) {
         emotionDisplay.textContent = emotionDisplayNames[data.emotion] || '😐 中性';
         emotionEffect.textContent = `→ 花朵颜色变为柔和的${emotionDisplayNames[data.emotion]?.split(' ')[1] || '中性'}色调`;
         
-        // 获取情绪颜色（低饱和度）
-        const emotionColorHex = emotionColors[data.emotion] || emotionColors['neutral'];
-        targetColor.setHex(emotionColorHex);
+        // 获取情绪颜色（低饱和度）- 只在参数未固定时更新
+        if (!flowerParamsFixed || currentPhase === 'voice_interaction') {
+            const emotionColorHex = emotionColors[data.emotion] || emotionColors['neutral'];
+            targetColor.setHex(emotionColorHex);
+        }
         
         // --- 更新响度显示 ---
         const loudnessPercent = Math.round(data.loudness * 100);
@@ -1258,18 +1593,20 @@ function animate() {
         }
     }
     
-    // 平滑颜色过渡
-    currentColor.lerp(targetColor, 0.04);
-    
-    // 更新主花朵颜色（平滑过渡）
-    mainFlower.petalMeshes.forEach(petal => {
-        if (petal.material) {
-            petal.material.color.lerp(currentColor, 0.08);
-        }
-    });
+    // 平滑颜色过渡（只在语音交互阶段或参数未固定时更新）
+    if (!flowerParamsFixed || currentPhase === 'voice_interaction') {
+        currentColor.lerp(targetColor, 0.04);
+        
+        // 更新主花朵颜色（平滑过渡）
+        mainFlower.petalMeshes.forEach(petal => {
+            if (petal.material) {
+                petal.material.color.lerp(currentColor, 0.08);
+            }
+        });
+    }
     
     // --- 两阶段系统更新 ---
-    checkInitializationComplete();
+    // 语音交互阶段不需要自动完成检查，需要等待用户完成录音
     
     // 确保所有花朵始终在场景中且可见
     flowers.forEach((flower, index) => {
@@ -1298,12 +1635,25 @@ function animate() {
         }
     });
     
-    // 初始化阶段：花朵逐渐出现
-    if (currentPhase === 'initialization') {
-        const elapsed = Date.now() - initializationStartTime;
-        const progress = Math.min(elapsed / INITIALIZATION_DURATION, 1);
-        const easeProgress = 1 - Math.pow(1 - progress, 3); // 缓动函数
+    // 语音交互阶段：主花朵保持可见
+    if (currentPhase === 'voice_interaction') {
+        // 主花朵保持可见，等待用户语音输入
+        if (mainFlower && mainFlower.group) {
+            mainFlower.group.visible = true;
+        }
+    }
+    
+    // 手势交互阶段：确保姿态检测正在运行
+    if (currentPhase === 'gesture_interaction') {
+        // 确保姿态检测已启动
+        if (poseDetector && typeof poseDetector.isDetectingActive === 'function' && !poseDetector.isDetectingActive()) {
+            console.log('姿态检测未运行，重新启动...');
+            initPoseDetection().catch(err => {
+                console.error('重新启动姿态检测失败:', err);
+            });
+        }
         
+        // 在手势交互阶段，所有花朵应该已经可见并正常显示
         flowers.forEach((flower, index) => {
             if (flower && flower.group) {
                 // 确保花朵可见
@@ -1344,14 +1694,12 @@ function animate() {
                     );
                 }
                 
-                // 逐渐缩放出现（确保最小值）
-                const targetScale = Math.max(0.5, 0.8 + easeProgress * 0.2); // 从0.8到1.0，最小0.5
-                flower.group.scale.lerp(
-                    new THREE.Vector3(targetScale, targetScale, targetScale),
-                    0.1
-                );
+                // 保持正常大小，如果太小则逐渐放大
+                if (flower.group.scale.x < 0.8) {
+                    flower.group.scale.lerp(new THREE.Vector3(1.0, 1.0, 1.0), 0.05);
+                }
                 
-                // 轻微旋转
+                // 轻微旋转动画
                 flower.group.rotation.y = Math.sin(time * 0.5 + index * 0.5) * 0.03;
             }
         });
@@ -1494,9 +1842,11 @@ function animate() {
         });
     }
     
-    // 更新 GPU 粒子系统
+    // 更新 GPU 粒子系统（始终更新，保持活动）
     const emotionColorHex = emotionColors[currentEmotion] || emotionColors['neutral'];
-    gpuParticles.update(deltaTime, emotionColorHex);
+    if (gpuParticles) {
+        gpuParticles.update(deltaTime, emotionColorHex);
+    }
     
     // 添加蝴蝶轨迹粒子（降低频率以提高性能）
     if (butterfly && animationFrameCount % 3 === 0) {
@@ -1557,46 +1907,92 @@ function animate() {
     
     // --- 更新蝴蝶 ---
     // 只在交互阶段更新蝴蝶
-    if (currentPhase === 'interaction') {
+    if (currentPhase === 'gesture_interaction' && flowerParamsFixed) {
         // 检测捏合手势（添加安全检查）
         let effectiveHandPosition = null;
+        let shouldFollowHand = false;
         
         if (gestureRecognizer && typeof gestureRecognizer.getRecentPinchGesture === 'function') {
             const currentGesture = gestureRecognizer.getRecentPinchGesture();
             
             if (currentGesture && currentGesture.gesture) {
                 const gestureType = currentGesture.gesture.type;
+                const gesture = currentGesture.gesture;
                 
-                // 如果正在捏合，蝴蝶跟随手部位置
-                if (gestureType === 'pinch_start' || gestureType === 'pinch_hold') {
-                    if (currentGesture.gesture.handPosition) {
+                // 新手势类型：基于位置的手势都可以控制蝴蝶
+                if (gestureType === 'hand_up' || 
+                    gestureType === 'hand_down' || 
+                    gestureType === 'hand_left' || 
+                    gestureType === 'hand_right' || 
+                    gestureType === 'hand_center' ||
+                    gestureType.startsWith('stable_')) {
+                    // 这些手势都可以控制蝴蝶
+                    if (gesture.handPosition) {
                         effectiveHandPosition = {
-                            ...currentGesture.gesture.handPosition,
+                            ...gesture.handPosition,
+                            gestureType: gestureType,
+                            region: gesture.region
+                        };
+                        shouldFollowHand = true;
+                    }
+                } 
+                // 快速移动：触发特殊效果
+                else if (gestureType === 'fast_move') {
+                    // 快速移动时，蝴蝶快速跟随
+                    if (gesture.handPosition) {
+                        effectiveHandPosition = {
+                            ...gesture.handPosition,
+                            gestureType: gestureType,
+                            isFast: true
+                        };
+                        shouldFollowHand = true;
+                    }
+                }
+                // 旧手势类型（兼容）
+                else if (gestureType === 'pinch_start' || gestureType === 'pinch_hold') {
+                    if (gesture.handPosition) {
+                        effectiveHandPosition = {
+                            ...gesture.handPosition,
                             isPinching: true
                         };
+                        shouldFollowHand = true;
                     }
                 } else if (gestureType === 'pinch_end') {
-                    // 捏合结束，蝴蝶停止跟随
+                    // 捏合结束，停止跟随
                     effectiveHandPosition = null;
+                    shouldFollowHand = false;
                 }
             }
         } else {
             // 如果手势识别器不可用，使用手部位置（如果有）
             if (handPosition && handPosition.confidence > 0.5) {
                 effectiveHandPosition = handPosition;
+                shouldFollowHand = true;
             }
         }
         
-        // 只有在捏合时才跟随手部，否则使用AI行为
+        // 根据手势类型控制蝴蝶
         const flightSpeed = aiButterflyBehavior?.flight_speed || 0.5;
-        if (effectiveHandPosition && effectiveHandPosition.isPinching) {
-            // 捏合状态：蝴蝶跟随手部位置
+        if (effectiveHandPosition && shouldFollowHand) {
+            // 根据手势类型调整飞行速度
+            let adjustedSpeed = flightSpeed;
+            if (effectiveHandPosition.isFast) {
+                adjustedSpeed = flightSpeed * 2.0; // 快速移动时加速
+            } else if (effectiveHandPosition.gestureType && effectiveHandPosition.gestureType.startsWith('stable_')) {
+                adjustedSpeed = flightSpeed * 0.7; // 静止时减速，更精确控制
+            }
+            
+            // 手势控制：蝴蝶跟随手部位置
+            // 确保传递手部位置给蝴蝶AI（传递 null 作为 aiBehavior 以使用 defaultBehavior）
             butterflyAI.update(deltaTime, effectiveHandPosition, null);
+            butterfly.update(deltaTime, adjustedSpeed);
         } else {
-            // 非捏合状态：使用AI行为或默认行为
+            // 无手势控制：使用AI行为或默认行为（自由飞行）
+            // 确保传递 null 作为 handPosition，让 AI 使用默认行为
             butterflyAI.update(deltaTime, null, aiButterflyBehavior);
+            // 确保蝴蝶始终在更新
+            butterfly.update(deltaTime, flightSpeed);
         }
-        butterfly.update(deltaTime, flightSpeed);
     } else {
         // 初始化阶段：蝴蝶也可见，但位置固定
         if (butterfly) {
@@ -1689,8 +2085,8 @@ window.addEventListener('resize', () => {
     }
 });
 
-// 启动初始化阶段
-startInitializationPhase();
+// 启动语音交互阶段
+startVoiceInteractionPhase();
 
 // 检查场景内容
 console.log('✓ 场景初始化完成:', {

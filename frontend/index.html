@@ -88,11 +88,79 @@
             opacity: 0.6;
             z-index: 100;
         }
+        .voice-interaction {
+            position: absolute;
+            bottom: 40px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: rgba(26, 26, 31, 0.9);
+            padding: 30px 40px;
+            border-radius: 16px;
+            backdrop-filter: blur(20px);
+            border: 2px solid rgba(184, 212, 227, 0.3);
+            z-index: 200;
+            text-align: center;
+            min-width: 400px;
+            display: none;
+        }
+        .voice-interaction.active {
+            display: block;
+        }
+        .voice-prompt {
+            color: #b8d4e3;
+            font-size: 18px;
+            margin-bottom: 20px;
+            font-weight: 300;
+        }
+        .voice-button {
+            background: linear-gradient(135deg, #b8d4e3, #e8c5d8);
+            color: #1a1a1f;
+            border: none;
+            padding: 15px 40px;
+            border-radius: 30px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            margin: 10px;
+        }
+        .voice-button:hover {
+            transform: scale(1.05);
+            box-shadow: 0 0 20px rgba(184, 212, 227, 0.5);
+        }
+        .voice-button:active {
+            transform: scale(0.95);
+        }
+        .voice-button.recording {
+            background: linear-gradient(135deg, #ff6b9d, #ff8c94);
+            animation: pulse 1.5s infinite;
+        }
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.7; }
+        }
+        .voice-status {
+            color: #a8c8ec;
+            font-size: 14px;
+            margin-top: 15px;
+            min-height: 20px;
+        }
     </style>
+    <!-- 加载本地 TensorFlow.js 和 Pose Detection -->
+    <script src="lib/tensorflow/tf.min.js"></script>
+    <script src="lib/pose-detection/pose-detection.min.js"></script>
 </head>
 <body>
     <canvas id="c"></canvas>
     <div class="fps-counter" id="fps-counter">FPS: 60</div>
+    
+    <!-- 语音交互界面 -->
+    <div class="voice-interaction" id="voice-interaction">
+        <div class="voice-prompt" id="voice-prompt">How was your day?</div>
+        <button class="voice-button" id="voice-button">🎤 Start Recording</button>
+        <div class="voice-status" id="voice-status"></div>
+    </div>
+    
     <div class="info">
         <div style="font-size: 16px; margin-bottom: 8px;">🌺 Cyber Garden</div>
         <div id="status">连接中...</div>
@@ -148,7 +216,7 @@
         }
     }
     </script>
-    <script type="module" src="main.js?v=202511123300"></script>
+    <script type="module" src="main.js?v=202511123900"></script>
 </body>
 </html>
 

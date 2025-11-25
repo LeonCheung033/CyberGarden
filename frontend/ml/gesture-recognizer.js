@@ -1,34 +1,57 @@
 /**
  * Gesture Recognizer
  * 识别手势并转换为控制命令
- * 重点：识别食指和拇指捏合手势
+ * 基于 MediaPipe Pose 检测的手腕位置，识别简单易用的手势
+ * 
+ * 推荐手势（识别成功率高）：
+ * 1. 举手 - 手腕在屏幕上方区域（控制蝴蝶向上）
+ * 2. 手在中间 - 手腕在屏幕中间区域（控制蝴蝶在中间）
+ * 3. 手在下方 - 手腕在屏幕下方区域（控制蝴蝶向下）
+ * 4. 手在左侧 - 手腕在屏幕左侧区域（控制蝴蝶向左）
+ * 5. 手在右侧 - 手腕在屏幕右侧区域（控制蝴蝶向右）
+ * 6. 快速移动 - 手部快速移动（触发特殊效果）
+ * 7. 静止 - 手部保持静止（稳定控制）
  */
 
 class GestureRecognizer {
     constructor() {
         this.gestureHistory = [];
-        this.historySize = 10;
-        this.pinchThreshold = 0.05; // 捏合距离阈值（归一化坐标）
-        this.isPinching = false;
-        this.pinchStartTime = 0;
+        this.historySize = 20; // 增加历史记录以更好地检测移动
+        this.movementThreshold = 0.02; // 移动阈值（归一化坐标）
+        this.fastMovementThreshold = 0.05; // 快速移动阈值
+        this.stableThreshold = 0.01; // 静止阈值
+        this.stableTime = 300; // 静止时间（毫秒）
+        
+        // 屏幕区域划分（归一化坐标）
+        this.regions = {
+            top: { minY: 0, maxY: 0.4 },
+            middle: { minY: 0.4, maxY: 0.6 },
+            bottom: { minY: 0.6, maxY: 1.0 },
+            left: { minX: 0, maxX: 0.4 },
+            center: { minX: 0.4, maxX: 0.6 },
+            right: { minX: 0.6, maxX: 1.0 }
+        };
+        
+        this.lastStablePosition = null;
+        this.lastStableTime = 0;
     }
 
     recognize(pose, handPosition) {
         if (!pose || !pose.keypoints || !handPosition) {
-            // 如果没有检测到手部，重置捏合状态
-            if (this.isPinching) {
-                this.isPinching = false;
-                return { type: 'pinch_end', handPosition: null };
-            }
             return null;
         }
 
-        // 检测捏合手势
-        const pinchGesture = this.detectPinchGesture(pose, handPosition);
+        // 检查手部置信度
+        if (handPosition.confidence < 0.5) {
+            return null;
+        }
+
+        // 检测手势
+        const gesture = this.detectGesture(pose, handPosition);
         
-        if (pinchGesture) {
+        if (gesture) {
             this.gestureHistory.push({
-                gesture: pinchGesture,
+                gesture: gesture,
                 timestamp: Date.now(),
                 handPosition: handPosition
             });
@@ -38,100 +61,181 @@ class GestureRecognizer {
             }
         }
 
-        return pinchGesture;
+        return gesture;
     }
 
     /**
-     * 检测食指和拇指捏合手势
-     * 使用 MediaPipe Pose 的关键点：
-     * - 左手/右手食指：index_finger_tip
-     * - 左手/右手拇指：thumb_tip
+     * 检测手势
+     * 基于手腕位置和移动模式
      */
-    detectPinchGesture(pose, handPosition) {
-        if (!pose || !pose.keypoints) {
-            return null;
-        }
+    detectGesture(pose, handPosition) {
+        const now = Date.now();
+        
+        // 1. 检测手部在屏幕的哪个区域
+        const region = this.getHandRegion(handPosition);
+        
+        // 2. 检测移动模式
+        const movement = this.detectMovement(handPosition);
+        
+        // 3. 检测是否静止
+        const isStable = this.isStable(handPosition, now);
+        
+        // 组合手势信息
+        const gesture = {
+            type: this.determineGestureType(region, movement, isStable),
+            region: region,
+            movement: movement,
+            isStable: isStable,
+            handPosition: handPosition,
+            timestamp: now
+        };
+        
+        return gesture;
+    }
 
-        // MediaPipe Pose 不直接提供手部关键点，我们需要使用手腕位置
-        // 作为替代方案，我们可以使用 MediaPipe Hands 或简化检测
+    /**
+     * 获取手部所在的屏幕区域
+     */
+    getHandRegion(handPosition) {
+        // 使用归一化坐标（如果可用），否则使用3D坐标转换
+        const x = handPosition.normalizedX !== undefined ? handPosition.normalizedX : (handPosition.x / 20 + 0.5);
+        const y = handPosition.normalizedY !== undefined ? handPosition.normalizedY : (0.5 - handPosition.y / 15);
         
-        // 简化方案：使用手腕位置和手部移动来推断捏合
-        // 实际应用中应该使用 MediaPipe Hands 来获取精确的手部关键点
+        let verticalRegion = 'middle';
+        let horizontalRegion = 'center';
         
-        // 这里我们使用一个简化的方法：
-        // 如果手部位置稳定且置信度高，假设是捏合状态
-        const wasPinching = this.isPinching;
-        
-        // 检查手部位置稳定性（简化版）
-        if (this.gestureHistory.length > 0) {
-            const last = this.gestureHistory[this.gestureHistory.length - 1];
-            if (last.handPosition && last.timestamp) {
-                const timeDiff = Date.now() - last.timestamp;
-                if (timeDiff < 200) { // 200ms 内的位置
-                    const dx = handPosition.x - last.handPosition.x;
-                    const dy = handPosition.y - last.handPosition.y;
-                    const dz = handPosition.z - last.handPosition.z;
-                    const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                    
-                    // 如果手部移动很小且置信度高，认为是捏合状态
-                    if (distance < 0.3 && handPosition.confidence > 0.7) {
-                        if (!wasPinching) {
-                            this.isPinching = true;
-                            this.pinchStartTime = Date.now();
-                            return { type: 'pinch_start', handPosition: handPosition };
-                        } else {
-                            // 持续捏合
-                            return { type: 'pinch_hold', handPosition: handPosition };
-                        }
-                    }
-                }
-            }
+        // 垂直区域
+        if (y < this.regions.top.maxY) {
+            verticalRegion = 'top';
+        } else if (y > this.regions.bottom.minY) {
+            verticalRegion = 'bottom';
         }
         
-        // 如果之前是捏合状态，现在检测到移动或置信度降低，结束捏合
-        if (wasPinching) {
-            if (handPosition.confidence < 0.5) {
-                this.isPinching = false;
-                return { type: 'pinch_end', handPosition: null };
-            }
+        // 水平区域
+        if (x < this.regions.left.maxX) {
+            horizontalRegion = 'left';
+        } else if (x > this.regions.right.minX) {
+            horizontalRegion = 'right';
+        }
+        
+        return {
+            vertical: verticalRegion,
+            horizontal: horizontalRegion,
+            combined: `${verticalRegion}_${horizontalRegion}`
+        };
+    }
+
+    /**
+     * 检测手部移动
+     */
+    detectMovement(handPosition) {
+        if (this.gestureHistory.length < 2) {
+            return { speed: 0, direction: 'none', distance: 0 };
+        }
+        
+        // 获取最近的两个位置
+        const recent = this.gestureHistory.slice(-5); // 使用最近5个位置
+        if (recent.length < 2) {
+            return { speed: 0, direction: 'none', distance: 0 };
+        }
+        
+        const last = recent[recent.length - 1];
+        const prev = recent[0];
+        
+        if (!last.handPosition || !prev.handPosition) {
+            return { speed: 0, direction: 'none', distance: 0 };
+        }
+        
+        const dx = handPosition.x - prev.handPosition.x;
+        const dy = handPosition.y - prev.handPosition.y;
+        const dz = handPosition.z - (prev.handPosition.z || 0);
+        
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        const timeDiff = last.timestamp - prev.timestamp;
+        const speed = timeDiff > 0 ? distance / (timeDiff / 1000) : 0; // 单位：归一化坐标/秒
+        
+        // 计算方向
+        let direction = 'none';
+        if (distance > this.movementThreshold) {
+            const angle = Math.atan2(dy, dx) * 180 / Math.PI;
             
-            // 检查是否有明显移动
-            if (this.gestureHistory.length > 0) {
-                const last = this.gestureHistory[this.gestureHistory.length - 1];
-                if (last.handPosition && last.timestamp) {
-                    const timeDiff = Date.now() - last.timestamp;
-                    if (timeDiff < 200) {
-                        const dx = handPosition.x - last.handPosition.x;
-                        const dy = handPosition.y - last.handPosition.y;
-                        const dz = handPosition.z - last.handPosition.z;
-                        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
-                        
-                        if (distance > 0.5) {
-                            this.isPinching = false;
-                            return { type: 'pinch_end', handPosition: null };
-                        }
-                    }
-                }
+            if (Math.abs(dx) > Math.abs(dy)) {
+                // 主要是水平移动
+                direction = dx > 0 ? 'right' : 'left';
+            } else {
+                // 主要是垂直移动
+                direction = dy > 0 ? 'down' : 'up';
             }
         }
         
-        // 默认状态：如果手部存在但未捏合
-        if (handPosition && handPosition.confidence > 0.5) {
-            return { type: 'hand_detected', handPosition: handPosition };
+        return {
+            speed: speed,
+            direction: direction,
+            distance: distance,
+            isFast: speed > this.fastMovementThreshold,
+            isMoving: distance > this.movementThreshold
+        };
+    }
+
+    /**
+     * 检测手部是否静止
+     */
+    isStable(handPosition, now) {
+        if (!this.lastStablePosition) {
+            this.lastStablePosition = handPosition;
+            this.lastStableTime = now;
+            return false;
         }
         
-        return null;
+        const dx = handPosition.x - this.lastStablePosition.x;
+        const dy = handPosition.y - this.lastStablePosition.y;
+        const dz = (handPosition.z || 0) - (this.lastStablePosition.z || 0);
+        const distance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        
+        if (distance < this.stableThreshold) {
+            // 位置稳定
+            if (now - this.lastStableTime > this.stableTime) {
+                return true;
+            }
+        } else {
+            // 位置变化，重置
+            this.lastStablePosition = handPosition;
+            this.lastStableTime = now;
+        }
+        
+        return false;
     }
 
     /**
-     * 检查是否正在捏合
+     * 确定手势类型
      */
-    isCurrentlyPinching() {
-        return this.isPinching;
+    determineGestureType(region, movement, isStable) {
+        // 快速移动 - 特殊手势
+        if (movement.isFast) {
+            return 'fast_move';
+        }
+        
+        // 静止状态 - 稳定控制
+        if (isStable) {
+            return `stable_${region.vertical}`;
+        }
+        
+        // 根据区域确定手势类型
+        if (region.vertical === 'top') {
+            return 'hand_up';
+        } else if (region.vertical === 'bottom') {
+            return 'hand_down';
+        } else if (region.horizontal === 'left') {
+            return 'hand_left';
+        } else if (region.horizontal === 'right') {
+            return 'hand_right';
+        } else {
+            return 'hand_center';
+        }
     }
 
     /**
-     * 获取最近的捏合手势
+     * 获取最近的手势
      */
     getRecentPinchGesture() {
         if (this.gestureHistory.length === 0) return null;
@@ -141,7 +245,18 @@ class GestureRecognizer {
     getRecentGestures(count = 3) {
         return this.gestureHistory.slice(-count);
     }
+    
+    /**
+     * 检查是否正在做某个手势（兼容旧代码）
+     */
+    isCurrentlyPinching() {
+        const recent = this.getRecentPinchGesture();
+        if (!recent || !recent.gesture) return false;
+        
+        // 如果手部在中心区域且静止，认为是"捏合"状态（用于控制蝴蝶）
+        return recent.gesture.type === 'hand_center' || 
+               recent.gesture.type.startsWith('stable_');
+    }
 }
 
 export { GestureRecognizer };
-

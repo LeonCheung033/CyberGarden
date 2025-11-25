@@ -52,31 +52,67 @@ class ButterflyAI {
     }
 
     defaultBehavior(handPosition) {
-        // 如果有手部位置且正在捏合，优先跟随
-        if (handPosition && handPosition.isPinching && handPosition.confidence > 0.5) {
-            this.currentBehavior = 'follow_hand';
-            this.butterfly.setTargetPosition(
-                handPosition.x,
-                handPosition.y,
-                handPosition.z
-            );
-            this.butterfly.setWingFlapSpeed(0.8); // 捏合时更快
-            this.flightSpeed = 0.8;
-            return;
+        // 如果有手部位置，优先跟随（支持所有手势类型）
+        if (handPosition && handPosition.confidence > 0.5) {
+            // 检查是否是手势控制（包括所有新手势类型）
+            const isGestureControl = handPosition.isPinching || 
+                                   handPosition.gestureType === 'hand_up' ||
+                                   handPosition.gestureType === 'hand_down' ||
+                                   handPosition.gestureType === 'hand_left' ||
+                                   handPosition.gestureType === 'hand_right' ||
+                                   handPosition.gestureType === 'hand_center' ||
+                                   handPosition.gestureType === 'fast_move' ||
+                                   (handPosition.gestureType && handPosition.gestureType.startsWith('stable_'));
+            
+            if (isGestureControl) {
+                this.currentBehavior = 'follow_hand';
+                this.butterfly.setTargetPosition(
+                    handPosition.x,
+                    handPosition.y,
+                    handPosition.z || 0
+                );
+                
+                // 根据手势类型调整翅膀扇动速度
+                if (handPosition.isFast || handPosition.gestureType === 'fast_move') {
+                    this.butterfly.setWingFlapSpeed(1.2); // 快速移动时更快
+                    this.flightSpeed = 1.0;
+                } else if (handPosition.gestureType && handPosition.gestureType.startsWith('stable_')) {
+                    this.butterfly.setWingFlapSpeed(0.5); // 静止时慢速
+                    this.flightSpeed = 0.5;
+                } else {
+                    this.butterfly.setWingFlapSpeed(0.8); // 正常跟随
+                    this.flightSpeed = 0.8;
+                }
+                return;
+            }
         }
 
+        // 如果没有手势控制，使用默认行为
         // 如果有目标花朵，围绕飞行
-        if (this.targetFlower) {
+        if (this.targetFlower && this.flowers.length > 0) {
             this.currentBehavior = 'circle_flower';
             this.butterfly.setWingFlapSpeed(0.5);
             this.flightSpeed = 0.4;
             return;
         }
 
-        // 默认自由飞行
+        // 默认自由飞行（确保蝴蝶始终有目标位置）
         this.currentBehavior = 'free_fly';
         this.butterfly.setWingFlapSpeed(0.4);
         this.flightSpeed = 0.3;
+        
+        // 确保有初始目标位置
+        const currentPos = this.butterfly.getPosition();
+        if (!this.butterfly.targetPosition || 
+            currentPos.distanceTo(this.butterfly.targetPosition) < 0.1) {
+            // 如果接近目标或没有目标，设置新目标
+            const newTarget = {
+                x: (Math.random() - 0.5) * 15,
+                y: 1 + Math.random() * 4,
+                z: (Math.random() - 0.5) * 15
+            };
+            this.butterfly.setTargetPosition(newTarget.x, newTarget.y, newTarget.z);
+        }
     }
 
     executeBehavior(deltaTime, handPosition) {
@@ -99,11 +135,21 @@ class ButterflyAI {
 
     followHand(handPosition) {
         if (handPosition && handPosition.confidence > 0.5) {
+            // 持续更新目标位置，确保蝴蝶跟随手部
             this.butterfly.setTargetPosition(
                 handPosition.x,
                 handPosition.y,
-                handPosition.z
+                handPosition.z || 0
             );
+            
+            // 根据手势类型调整行为
+            if (handPosition.isFast || handPosition.gestureType === 'fast_move') {
+                this.butterfly.setWingFlapSpeed(1.2);
+            } else if (handPosition.gestureType && handPosition.gestureType.startsWith('stable_')) {
+                this.butterfly.setWingFlapSpeed(0.5);
+            } else {
+                this.butterfly.setWingFlapSpeed(0.8);
+            }
         }
     }
 

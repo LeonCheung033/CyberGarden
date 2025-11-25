@@ -215,6 +215,21 @@ wheels = [
 ]
 
 [[package]]
+name = "assemblyai"
+version = "0.46.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "httpx" },
+    { name = "pydantic" },
+    { name = "typing-extensions" },
+    { name = "websockets" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/90/c2/bf1abe9f64e5b039a7ebf5f0b09164e1fddc5870f43def250627f0fab361/assemblyai-0.46.0.tar.gz", hash = "sha256:3e675753b954737b280ed862022c6b4eceeee81ee3ee2158a7b0612d1db9559a", size = 55747, upload-time = "2025-11-05T19:33:19.266Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/bb/ad/823274ed6282abb033ea8a58407e32a508dd48cd2a20c3f847955a668c64/assemblyai-0.46.0-py3-none-any.whl", hash = "sha256:77a4da84a3867febc30ffa1a3780c66cc2f27c9cc7f30887667e8ab6a337c237", size = 51841, upload-time = "2025-11-05T19:33:17.856Z" },
+]
+
+[[package]]
 name = "astunparse"
 version = "1.6.3"
 source = { registry = "https://pypi.org/simple" }
@@ -311,6 +326,7 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "agentscope" },
+    { name = "assemblyai" },
     { name = "dashscope" },
     { name = "deepface" },
     { name = "fastapi" },
@@ -328,6 +344,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "agentscope", specifier = ">=1.0.7" },
+    { name = "assemblyai", specifier = ">=0.40.0" },
     { name = "dashscope", specifier = ">=1.25.0" },
     { name = "deepface", specifier = ">=0.0.95" },
     { name = "fastapi", specifier = ">=0.121.1" },
